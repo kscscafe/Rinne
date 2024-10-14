@@ -20,9 +20,9 @@ struct RotatingTextView: View {
     @State private var outerDisabledIndices: Set<Int> = []
     @State private var innerDisabledIndices: Set<Int> = []
     @State private var stringIndex: Int = 0  // 現在表示中の文字列のインデックス
-    @State private var textOpacity: Double = 0.0 // アニメーションのためのopacity
-    @State private var nextTextOpacity: Double = 0.0 // 次の文字列の透明度
-    @State private var nextNextTextOpacity: Double = 0.0 // 次の次の文字列の透明度
+    @State private var textOpacity: Double = 0.0 // 外側の円のアニメーションのためのopacity
+    @State private var nextTextOpacity: Double = 0.0 // 次の円の透明度
+    @State private var nextNextTextOpacity: Double = 0.0 // 内側の円（次の次の文字列）の透明度
 
     let allStrings = StringData.strings
     
@@ -39,11 +39,16 @@ struct RotatingTextView: View {
     
     var body: some View {
         GeometryReader { geometry in
+            let outerRadius = CGFloat(min(geometry.size.width, geometry.size.height)) / 2 - 60
+            let innerRadius = CGFloat(min(geometry.size.width, geometry.size.height)) / 4 - 10
+            let nextRadius = CGFloat(min(geometry.size.width, geometry.size.height)) / 10 + 10
+            let innerMostRadius = CGFloat(20 + 10) // 内側の円の半径
+            
             ZStack {
-                createCircle(geometry: geometry, textArray: outerText, angle: outerAngle, radius: min(geometry.size.width, geometry.size.height) / 2 - 60, opacity: textOpacity, fontSize: 35, isButton: true, disabledIndices: $outerDisabledIndices, currentIndex: $outerCurrentIndex, totalCount: outerText.count)
-                createCircle(geometry: geometry, textArray: innerText, angle: innerAngle, radius: min(geometry.size.width, geometry.size.height) / 4 - 10, opacity: textOpacity, fontSize: 35, isButton: true, disabledIndices: $innerDisabledIndices, currentIndex: $innerCurrentIndex, totalCount: outerText.count + innerText.count)
-                createCircle(geometry: geometry, textArray: nextText, angle: innerMostAngle, radius: min(geometry.size.width, geometry.size.height) / 10 + 10, opacity: nextTextOpacity, fontSize: 10, isButton: false)
-                createCircle(geometry: geometry, textArray: nextNextText, angle: innerAngle, radius: 25, opacity: nextNextTextOpacity, fontSize: 6, isButton: false)
+                createOuterCircle(geometry: geometry, outerRadius: outerRadius)
+                createInnerCircle(geometry: geometry, innerRadius: innerRadius)
+                createNextCircle(geometry: geometry, nextRadius: nextRadius)
+                createNextNextCircle(geometry: geometry, innerMostRadius: innerMostRadius)
             }
         }
         .onAppear {
@@ -52,60 +57,118 @@ struct RotatingTextView: View {
                     outerAngle -= 1.5
                     innerAngle += 1.5
                     innerMostAngle -= 1.5
-                    if outerAngle <= -360 { outerAngle = 0 }
-                    if innerAngle >= 360 { innerAngle = 0 }
-                    if innerMostAngle <= -360 { innerMostAngle = 0 }
+                    if outerAngle <= -360 {
+                        outerAngle = 0
+                    }
+                    if innerAngle >= 360 {
+                        innerAngle = 0
+                    }
+                    if innerMostAngle <= -360 {
+                        innerMostAngle = 0
+                    }
                 }
             }
             withAnimation(.easeIn(duration: 2.0)) {
                 textOpacity = 1.0
                 nextTextOpacity = 1.0
-                nextNextTextOpacity = 1.0
+                nextNextTextOpacity = 1.0 // 内側の円も徐々に表示
             }
         }
     }
+    
+    func createOuterCircle(geometry: GeometryProxy, outerRadius: CGFloat) -> some View {
+        ForEach(0..<outerText.count, id: \.self) { index in
+            let char = outerText[index]
+            let angleOffset = Double(index) * (360.0 / Double(outerText.count))
+            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((outerAngle + angleOffset) * .pi / 180)) * outerRadius
+            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((outerAngle + angleOffset) * .pi / 180)) * outerRadius
 
-    // 共通の円を作成する関数
-    func createCircle(geometry: GeometryProxy, textArray: [String], angle: Double, radius: CGFloat, opacity: Double, fontSize: CGFloat, isButton: Bool, disabledIndices: Binding<Set<Int>>? = nil, currentIndex: Binding<Int>? = nil, totalCount: Int = 0) -> some View {
-        ForEach(0..<textArray.count, id: \.self) { index in
-            let char = textArray[index]
-            let angleOffset = Double(index) * (360.0 / Double(textArray.count))
-            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((angle + angleOffset) * .pi / 180)) * radius
-            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((angle + angleOffset) * .pi / 180)) * radius
+            Button(action: {
+                if char == String(Array(allStrings[stringIndex])[outerCurrentIndex]) {
+                    outerDisabledIndices.insert(index)
+                    outerCurrentIndex += 1
 
-            if isButton {
-                Button(action: {
-                    if char == String(Array(allStrings[stringIndex])[currentIndex?.wrappedValue ?? 0]) {
-                        disabledIndices?.wrappedValue.insert(index)
-                        currentIndex?.wrappedValue += 1
-
-                        if currentIndex?.wrappedValue == totalCount {
-                            loadNextString()
-                        }
+                    if outerCurrentIndex == outerText.count && innerCurrentIndex == innerText.count {
+                        loadNextString()
                     }
-                }) {
-                    Text(char)
-                        .font(.custom("Hiragino Mincho ProN", size: fontSize))
-                        .fontWeight(.bold)
-                        .foregroundColor(disabledIndices?.wrappedValue.contains(index) == true ? Color.black.opacity(0.5) : .primary)
-                        .opacity(opacity)
                 }
-                .disabled(disabledIndices?.wrappedValue.contains(index) == true)
-                .position(x: xPosition, y: yPosition)
-            } else {
+            }) {
                 Text(char)
-                    .font(.custom("Hiragino Mincho ProN", size: fontSize))
-                    .foregroundColor(Color.gray.opacity(0.8))
-                    .opacity(opacity)
-                    .position(x: xPosition, y: yPosition)
+                    .font(.custom("Hiragino Mincho ProN", size: 35))
+                    .fontWeight(.bold)
+                    .foregroundColor(outerDisabledIndices.contains(index) ? Color.gray.opacity(0.5) : .primary)
+                    .opacity(textOpacity)
             }
+            .disabled(outerDisabledIndices.contains(index))
+            .position(x: xPosition, y: yPosition)
+        }
+    }
+    
+    func createInnerCircle(geometry: GeometryProxy, innerRadius: CGFloat) -> some View {
+        ForEach(0..<innerText.count, id: \.self) { index in
+            let char = innerText[index]
+            let angleOffset = Double(index) * (360.0 / Double(innerText.count))
+            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((innerAngle + angleOffset) * .pi / 180)) * innerRadius
+            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((innerAngle + angleOffset) * .pi / 180)) * innerRadius
+            
+            Button(action: {
+                if char == String(Array(allStrings[stringIndex])[outerText.count + innerCurrentIndex]) {
+                    innerDisabledIndices.insert(index)
+                    innerCurrentIndex += 1
+
+                    if outerCurrentIndex == outerText.count && innerCurrentIndex == innerText.count {
+                        loadNextString()
+                    }
+                }
+            }) {
+                Text(char)
+                    .font(.custom("Hiragino Mincho ProN", size: 35))
+                    .fontWeight(.bold)
+                    .foregroundColor(innerDisabledIndices.contains(index) ? Color.gray.opacity(0.5) : .primary)
+                    .opacity(textOpacity)
+            }
+            .disabled(innerDisabledIndices.contains(index))
+            .position(x: xPosition, y: yPosition)
+        }
+    }
+    
+    func createNextCircle(geometry: GeometryProxy, nextRadius: CGFloat) -> some View {
+        ForEach(0..<nextText.count, id: \.self) { index in
+            let char = nextText[index]
+            let angleOffset = Double(index) * (360.0 / Double(nextText.count))
+            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((innerMostAngle + angleOffset) * .pi / 180)) * nextRadius
+            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((innerMostAngle + angleOffset) * .pi / 180)) * nextRadius
+            
+            Text(char)
+                .font(.custom("Hiragino Mincho ProN", size: 10))
+                .foregroundColor(Color.gray.opacity(0.8))
+                .opacity(nextTextOpacity)
+                .position(x: xPosition, y: yPosition)
+        }
+    }
+    
+    func createNextNextCircle(geometry: GeometryProxy, innerMostRadius: CGFloat) -> some View {
+        ForEach(0..<nextNextText.count, id: \.self) { index in
+            let char = nextNextText[index]
+            let angleOffset = Double(index) * (360.0 / Double(nextNextText.count))
+            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((innerAngle + angleOffset) * .pi / 180)) * innerMostRadius
+            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((innerAngle + angleOffset) * .pi / 180)) * innerMostRadius
+            
+            Text(char)
+                .font(.custom("Hiragino Mincho ProN", size: 7))
+                .foregroundColor(Color.gray.opacity(0.8))
+                .opacity(nextNextTextOpacity) // アニメーションを適用
+                .position(x: xPosition, y: yPosition)
         }
     }
 
     // 次の文字列を設定
     func loadNextString() {
         stringIndex += 1
-        if stringIndex >= allStrings.count { stringIndex = 0 }
+        
+        if stringIndex >= allStrings.count {
+            stringIndex = 0
+        }
         
         let currentString = allStrings[stringIndex]
         let middleIndex = currentString.count / 2
@@ -114,20 +177,21 @@ struct RotatingTextView: View {
         outerText = outerPart.map { String($0) }.shuffled()
         innerText = innerPart.map { String($0) }.shuffled()
         nextText = Array(allStrings[(stringIndex + 1) % allStrings.count]).map { String($0) }.shuffled()
-        nextNextText = Array(allStrings[(stringIndex + 2) % allStrings.count]).map { String($0) }.shuffled()
-        
+        nextNextText = Array(allStrings[(stringIndex + 2) % allStrings.count]).map { String($0) }.shuffled() // 次の次の文字列
+
         outerCurrentIndex = 0
         innerCurrentIndex = 0
         outerDisabledIndices.removeAll()
         innerDisabledIndices.removeAll()
         
+        // アニメーションで透明度をリセットして徐々に表示
         textOpacity = 0.0
         nextTextOpacity = 0.0
-        nextNextTextOpacity = 0.0
+        nextNextTextOpacity = 0.0 // 内側の円もリセット
         withAnimation(.easeIn(duration: 2.0)) {
             textOpacity = 1.0
             nextTextOpacity = 1.0
-            nextNextTextOpacity = 1.0
+            nextNextTextOpacity = 1.0 // 内側の円も徐々に表示
         }
     }
 }
