@@ -45,10 +45,14 @@ struct RotatingTextView: View {
             let innerMostRadius = CGFloat(20 + 10) // 内側の円の半径
             
             ZStack {
-                createOuterCircle(geometry: geometry, outerRadius: outerRadius)
-                createInnerCircle(geometry: geometry, innerRadius: innerRadius)
-                createNextCircle(geometry: geometry, nextRadius: nextRadius)
-                createNextNextCircle(geometry: geometry, innerMostRadius: innerMostRadius)
+                createCircle(geometry: geometry, texts: outerText, radius: outerRadius, angle: outerAngle, fontSize: 35, textColor: .primary, isDisabled: outerDisabledIndices, opacity: textOpacity) { index in
+                    handleOuterTap(index: index)
+                }
+                createCircle(geometry: geometry, texts: innerText, radius: innerRadius, angle: innerAngle, fontSize: 35, textColor: .primary, isDisabled: innerDisabledIndices, opacity: textOpacity) { index in
+                    handleInnerTap(index: index)
+                }
+                createCircle(geometry: geometry, texts: nextText, radius: nextRadius, angle: innerMostAngle, fontSize: 10, textColor: Color.gray.opacity(0.8), isDisabled: Set(), opacity: nextTextOpacity, buttonAction: { _ in })
+                createCircle(geometry: geometry, texts: nextNextText, radius: innerMostRadius, angle: innerAngle, fontSize: 7, textColor: Color.gray.opacity(0.8), isDisabled: Set(), opacity: nextNextTextOpacity, buttonAction: { _ in })
             }
         }
         .onAppear {
@@ -57,15 +61,7 @@ struct RotatingTextView: View {
                     outerAngle -= 1.5
                     innerAngle += 1.5
                     innerMostAngle -= 1.5
-                    if outerAngle <= -360 {
-                        outerAngle = 0
-                    }
-                    if innerAngle >= 360 {
-                        innerAngle = 0
-                    }
-                    if innerMostAngle <= -360 {
-                        innerMostAngle = 0
-                    }
+                    resetAnglesIfNeeded()
                 }
             }
             withAnimation(.easeIn(duration: 2.0)) {
@@ -75,101 +71,57 @@ struct RotatingTextView: View {
             }
         }
     }
-    
-    func createOuterCircle(geometry: GeometryProxy, outerRadius: CGFloat) -> some View {
-        ForEach(0..<outerText.count, id: \.self) { index in
-            let char = outerText[index]
-            let angleOffset = Double(index) * (360.0 / Double(outerText.count))
-            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((outerAngle + angleOffset) * .pi / 180)) * outerRadius
-            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((outerAngle + angleOffset) * .pi / 180)) * outerRadius
+
+    func createCircle(geometry: GeometryProxy, texts: [String], radius: CGFloat, angle: Double, fontSize: CGFloat, textColor: Color, isDisabled: Set<Int>, opacity: Double, buttonAction: @escaping (Int) -> Void) -> some View {
+        ForEach(0..<texts.count, id: \.self) { index in
+            let char = texts[index]
+            let angleOffset = Double(index) * (360.0 / Double(texts.count))
+            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((angle + angleOffset) * .pi / 180)) * radius
+            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((angle + angleOffset) * .pi / 180)) * radius
 
             Button(action: {
-                if char == String(Array(allStrings[stringIndex])[outerCurrentIndex]) {
-                    outerDisabledIndices.insert(index)
-                    outerCurrentIndex += 1
-
-                    if outerCurrentIndex == outerText.count && innerCurrentIndex == innerText.count {
-                        loadNextString()
-                    }
-                }
+                buttonAction(index)
             }) {
                 Text(char)
-                    .font(.custom("Hiragino Mincho ProN", size: 35))
-                    .fontWeight(.bold)
-                    .foregroundColor(outerDisabledIndices.contains(index) ? Color.gray.opacity(0.5) : .primary)
-                    .opacity(textOpacity)
+                    .font(.custom("Hiragino Mincho ProN", size: fontSize))
+                    .fontWeight(.bold) // 太字を再追加
+                    .foregroundColor(isDisabled.contains(index) ? Color.gray.opacity(0.5) : textColor)
+                    .opacity(opacity) // 透明度の設定を保持
             }
-            .disabled(outerDisabledIndices.contains(index))
+            .disabled(isDisabled.contains(index))
             .position(x: xPosition, y: yPosition)
         }
     }
-    
-    func createInnerCircle(geometry: GeometryProxy, innerRadius: CGFloat) -> some View {
-        ForEach(0..<innerText.count, id: \.self) { index in
-            let char = innerText[index]
-            let angleOffset = Double(index) * (360.0 / Double(innerText.count))
-            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((innerAngle + angleOffset) * .pi / 180)) * innerRadius
-            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((innerAngle + angleOffset) * .pi / 180)) * innerRadius
-            
-            Button(action: {
-                if char == String(Array(allStrings[stringIndex])[outerText.count + innerCurrentIndex]) {
-                    innerDisabledIndices.insert(index)
-                    innerCurrentIndex += 1
 
-                    if outerCurrentIndex == outerText.count && innerCurrentIndex == innerText.count {
-                        loadNextString()
-                    }
-                }
-            }) {
-                Text(char)
-                    .font(.custom("Hiragino Mincho ProN", size: 35))
-                    .fontWeight(.bold)
-                    .foregroundColor(innerDisabledIndices.contains(index) ? Color.gray.opacity(0.5) : .primary)
-                    .opacity(textOpacity)
+    func handleOuterTap(index: Int) {
+        if outerText[index] == String(Array(allStrings[stringIndex])[outerCurrentIndex]) {
+            outerDisabledIndices.insert(index)
+            outerCurrentIndex += 1
+
+            if outerCurrentIndex == outerText.count && innerCurrentIndex == innerText.count {
+                loadNextString()
             }
-            .disabled(innerDisabledIndices.contains(index))
-            .position(x: xPosition, y: yPosition)
-        }
-    }
-    
-    func createNextCircle(geometry: GeometryProxy, nextRadius: CGFloat) -> some View {
-        ForEach(0..<nextText.count, id: \.self) { index in
-            let char = nextText[index]
-            let angleOffset = Double(index) * (360.0 / Double(nextText.count))
-            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((innerMostAngle + angleOffset) * .pi / 180)) * nextRadius
-            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((innerMostAngle + angleOffset) * .pi / 180)) * nextRadius
-            
-            Text(char)
-                .font(.custom("Hiragino Mincho ProN", size: 10))
-                .foregroundColor(Color.gray.opacity(0.8))
-                .opacity(nextTextOpacity)
-                .position(x: xPosition, y: yPosition)
-        }
-    }
-    
-    func createNextNextCircle(geometry: GeometryProxy, innerMostRadius: CGFloat) -> some View {
-        ForEach(0..<nextNextText.count, id: \.self) { index in
-            let char = nextNextText[index]
-            let angleOffset = Double(index) * (360.0 / Double(nextNextText.count))
-            let xPosition = CGFloat(geometry.size.width / 2) + CGFloat(cos((innerAngle + angleOffset) * .pi / 180)) * innerMostRadius
-            let yPosition = CGFloat(geometry.size.height / 2) + CGFloat(sin((innerAngle + angleOffset) * .pi / 180)) * innerMostRadius
-            
-            Text(char)
-                .font(.custom("Hiragino Mincho ProN", size: 7))
-                .foregroundColor(Color.gray.opacity(0.8))
-                .opacity(nextNextTextOpacity) // アニメーションを適用
-                .position(x: xPosition, y: yPosition)
         }
     }
 
-    // 次の文字列を設定
+    func handleInnerTap(index: Int) {
+        if innerText[index] == String(Array(allStrings[stringIndex])[outerText.count + innerCurrentIndex]) {
+            innerDisabledIndices.insert(index)
+            innerCurrentIndex += 1
+
+            if outerCurrentIndex == outerText.count && innerCurrentIndex == innerText.count {
+                loadNextString()
+            }
+        }
+    }
+
     func loadNextString() {
         stringIndex += 1
-        
+
         if stringIndex >= allStrings.count {
             stringIndex = 0
         }
-        
+
         let currentString = allStrings[stringIndex]
         let middleIndex = currentString.count / 2
         let outerPart = String(currentString.prefix(middleIndex))
@@ -177,21 +129,32 @@ struct RotatingTextView: View {
         outerText = outerPart.map { String($0) }.shuffled()
         innerText = innerPart.map { String($0) }.shuffled()
         nextText = Array(allStrings[(stringIndex + 1) % allStrings.count]).map { String($0) }.shuffled()
-        nextNextText = Array(allStrings[(stringIndex + 2) % allStrings.count]).map { String($0) }.shuffled() // 次の次の文字列
+        nextNextText = Array(allStrings[(stringIndex + 2) % allStrings.count]).map { String($0) }.shuffled()
 
         outerCurrentIndex = 0
         innerCurrentIndex = 0
         outerDisabledIndices.removeAll()
         innerDisabledIndices.removeAll()
-        
-        // アニメーションで透明度をリセットして徐々に表示
+
         textOpacity = 0.0
         nextTextOpacity = 0.0
-        nextNextTextOpacity = 0.0 // 内側の円もリセット
+        nextNextTextOpacity = 0.0
         withAnimation(.easeIn(duration: 2.0)) {
             textOpacity = 1.0
             nextTextOpacity = 1.0
-            nextNextTextOpacity = 1.0 // 内側の円も徐々に表示
+            nextNextTextOpacity = 1.0
+        }
+    }
+
+    func resetAnglesIfNeeded() {
+        if outerAngle <= -360 {
+            outerAngle = 0
+        }
+        if innerAngle >= 360 {
+            innerAngle = 0
+        }
+        if innerMostAngle <= -360 {
+            innerMostAngle = 0
         }
     }
 }
