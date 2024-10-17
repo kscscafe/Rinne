@@ -290,7 +290,7 @@ struct RotatingTextView: View {
     }
     
     func playSound() {
-        guard let url = Bundle.main.url(forResource: "木鉦_4", withExtension: "mp3") else { return }
+        guard let url = Bundle.main.url(forResource: "太鼓", withExtension: "mp3") else { return }
         
         do {
             audioPlayer = try AVAudioPlayer(contentsOf: url)
